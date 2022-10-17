@@ -38,6 +38,7 @@ from django.core.files.storage import FileSystemStorage
 
 from models.inceptionresnetv2 import InceptionResNetV2
 from utils.main import allowed_file, createFilePath
+from my_yolov6 import my_yolov6
 
 model_predict = InceptionResNetV2()
 num_inputs = model_predict.last_linear.in_features
@@ -58,7 +59,8 @@ model_predict.load_state_dict(torch.load("brain_tumor_inceptionresnetv2.pth", ma
 model_predict.eval()
 
 
-model_bbox = load_model('bbox_regression.h5')
+# model_bbox = load_model('bbox_regression.h5')
+yolov6_model = my_yolov6("best_ckpt.pt","cpu","data/mydataset.yml", 640, True)
 
 import imutils
 
@@ -146,30 +148,13 @@ class PredictView(views.APIView):
                 prediction = "No"
             elif (result == 1):
                 prediction = "Yes"
-                img_test = load_img(path, target_size=(224, 224))
-                img_test = img_to_array(img_test) / 255.0
-                img_test = np.expand_dims(img_test, axis=0)
-                preds = model_bbox.predict(img_test)[0]
-                (startX, startY, endX, endY) = preds
-                (h, w) = imag.shape[:2]
-                # scale the predicted bounding box coordinates based on the image
-                # dimensions
-                startX = int(startX * w)
-                startY = int(startY * h)
-                endX = int(endX * w)
-                endY = int(endY * h)
-                img1 = read_image(path)
-                boxes = torch.tensor([[startX, startY, endX, endY]], dtype=torch.float)
-                result1 = draw_bounding_boxes(img1, boxes, width=4)
-                result2 = torch.transpose(result1, 0, 2)
-                result2 = torch.transpose(result2, 0, 1)
-                result2 = result2.numpy()
+                imag, ndet = yolov6_model.infer(imag, conf_thres=0.4, iou_thres=0.45)
                 
                 # Bouding box predict path
                 extension = img_name.rsplit('.',1)[1].lower()
                 name = img_name.rsplit('.',1)[0]
                 bb_predict_path = f"{savedFolder}/{name}_bbox.{extension}"
-                cv2.imwrite(bb_predict_path, result2)
+                cv2.imwrite(bb_predict_path, imag)
             else:
                 prediction = "Unknown"
             return Response({
